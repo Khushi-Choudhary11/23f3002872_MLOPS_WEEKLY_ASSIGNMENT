@@ -85,12 +85,18 @@ def main():
     model.fit(X_train, y_train)
     acc = metrics.accuracy_score(y_test, model.predict(X_test))
     logger.info("Holdout accuracy: %.3f", acc)
-
-    # ---- 3. Save artifacts locally ----
+    
+     # ---- 3. Save artifacts locally ----
     local_dir = tempfile.mkdtemp()
+    
+    # Save temporary model (used for upload)
     model_path = os.path.join(local_dir, "model.joblib")
     joblib.dump(model, model_path)
-
+    
+    # Save another copy inside the repository for DVC
+    os.makedirs("models", exist_ok=True)
+    joblib.dump(model, "models/model.joblib")
+    
     metrics_path = os.path.join(local_dir, "metrics.json")
     with open(metrics_path, "w") as f:
         json.dump(
