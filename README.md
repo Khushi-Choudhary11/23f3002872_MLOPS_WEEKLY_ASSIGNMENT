@@ -1,141 +1,274 @@
-# IRIS ML Pipeline on Vertex AI — Week 1 MLOps Assignment
+# IRIS ML Pipeline with DVC on Vertex AI — Week 2 MLOps Assignment
 
 **Author:** Khushi Choudhary
 **Roll Number:** 23f3002872
 **Course:** MLOps (IIT Madras BS)
 
-An end-to-end machine learning pipeline for the classic IRIS classification problem, built on Google Cloud Platform. Data and model artifacts are managed through Google Cloud Storage (GCS), and the pipeline runs on a Vertex AI Workbench instance.
+This repository extends the Week 1 IRIS Machine Learning pipeline by integrating **Data Version Control (DVC)** into the workflow. The project combines **Google Cloud Storage (GCS)**, **Vertex AI Workbench**, **Git**, and **DVC** to create a reproducible, version-controlled machine learning pipeline.
 
-The pipeline is intentionally minimal — fetch data from the cloud, train a model, and store artifacts back to the cloud — so it can serve as the foundation for adding MLOps tooling (DVC, Feast, experiment tracking, CI/CD) in later weeks.
+Week 1 focused on building and executing the training and inference pipeline on Google Cloud. Week 2 enhances that pipeline by introducing dataset and model versioning, enabling reproducibility across multiple training iterations.
 
 ---
 
-## Architecture
+# Architecture
 
 ```
-Vertex AI Workbench  ──►  reads data from   ──►  gs://iris-data-23f3002872
-        │
-        │  train.py / infer.py
-        ▼
-Decision Tree model  ──►  writes artifacts  ──►  gs://iris-artifacts-23f3002872
-                                                  └── artifacts/<timestamp>/
+                        Git Repository
+                               │
+                Code + .dvc Pointer Files
+                               │
+                               ▼
+                    Vertex AI Workbench
+                               │
+         ┌─────────────────────┼─────────────────────┐
+         │                     │                     │
+         ▼                     ▼                     ▼
+ Data Bucket            DVC Remote Bucket      Artifact Bucket
+(Training Data)      (Versioned Data/Models)   (Run Outputs)
+
+gs://iris-data-23f3002872
+gs://iris-dvc-23f3002872
+gs://iris-artifacts-23f3002872
 ```
 
-Two separate GCS buckets are used:
+---
 
-| Bucket | Purpose |
-|--------|---------|
-| `iris-data-23f3002872` | Stores the dataset (raw, v1, v2 versions) |
-| `iris-artifacts-23f3002872` | Stores model + logs + predictions, organized by run timestamp |
+# Google Cloud Storage Buckets
+
+| Bucket                        | Purpose                                                                    |
+| ----------------------------- | -------------------------------------------------------------------------- |
+| **iris-data-23f3002872**      | Stores IRIS dataset versions used for training                             |
+| **iris-artifacts-23f3002872** | Stores timestamped model artifacts, logs, evaluation files and predictions |
+| **iris-dvc-23f3002872**       | DVC remote used for versioning datasets and model artifacts                |
 
 ---
 
-## Dataset
-
-R.A. Fisher's IRIS dataset — four numerical features (`sepal_length`, `sepal_width`, `petal_length`, `petal_width`) and a `species` target (setosa, versicolor, virginica).
-
-Three versions live in `data/` and are uploaded to the data bucket:
-
-| Version | Path in bucket | Rows |
-|---------|----------------|------|
-| `raw` | `data/raw/iris.csv` | 150 |
-| `v1`  | `data/v1/data.csv`  | 101 |
-| `v2`  | `data/v2/data.csv`  | 49  |
-
----
-
-## Repository structure
+# Repository Structure
 
 ```
 .
-├── train.py          # fetch data from GCS, train, upload timestamped artifacts
-├── infer.py          # fetch a trained model from GCS, predict on the eval set
-├── requirements.txt  # Python dependencies
+├── .dvc/
 ├── data/
-│   ├── raw/iris.csv
-│   ├── v1/data.csv
-│   └── v2/data.csv
-└── README.md
+│   ├── raw/
+│   ├── v1/
+│   └── v2/
+├── models/
+├── train.py
+├── infer.py
+├── requirements.txt
+├── README.md
+└── .dvcignore
 ```
 
 ---
 
-## How it works
+# Dataset
 
-### `train.py`
-1. Downloads the chosen data version from the **data bucket**.
-2. Splits the data into stratified train/eval sets (`test_size=0.4`, `random_state=42`).
-3. Trains a `DecisionTreeClassifier` (`max_depth=3`).
-4. Uploads the following to `gs://iris-artifacts-23f3002872/artifacts/<timestamp>/`:
-   - `model.joblib` — the trained model
-   - `metrics.json` — run metadata and accuracy
-   - `eval.csv` — the held-out evaluation set (so inference reuses the exact split)
-   - `train.log` — the training log
+The project uses the IRIS dataset consisting of four numerical features:
 
-Each run gets its own UTC-timestamped folder, making runs traceable and comparable.
+* sepal_length
+* sepal_width
+* petal_length
+* petal_width
 
-### `infer.py`
-1. Downloads `model.joblib` and `eval.csv` from a chosen timestamp folder in the **artifacts bucket**.
-2. Runs predictions on the evaluation set.
-3. Writes `predictions.csv` back into the same folder.
+Target:
+
+* species
+
+Dataset versions:
+
+| Version | Description                                         |
+| ------- | --------------------------------------------------- |
+| raw     | Original dataset                                    |
+| v1      | Modified dataset used during experimentation        |
+| v2      | Second modified dataset used during experimentation |
+
+Each version is stored in Google Cloud Storage and tracked through DVC.
 
 ---
 
-## Setup
+# Week 1 Pipeline
+
+The original pipeline performs the following steps:
+
+1. Downloads the selected dataset from the data bucket.
+2. Splits the dataset into train and evaluation sets.
+3. Trains a Decision Tree classifier.
+4. Generates:
+
+   * model.joblib
+   * metrics.json
+   * eval.csv
+   * train.log
+5. Uploads all artifacts into a timestamped folder inside the artifact bucket.
+
+Inference downloads the model and evaluation dataset from the artifact bucket and generates predictions.
+
+---
+
+# Week 2 – DVC Integration
+
+The Week 2 assignment integrates **Data Version Control (DVC)** into the existing pipeline.
+
+The following tasks were completed:
+
+* Initialized DVC inside the repository.
+* Configured Google Cloud Storage as the DVC remote.
+* Versioned IRIS dataset files using DVC.
+* Versioned trained model artifacts using DVC.
+* Stored DVC metadata inside Git while keeping large files inside GCS.
+* Created multiple data/model iterations.
+* Demonstrated switching between versions using Git and `dvc checkout`.
+
+---
+
+# DVC Workflow
+
+Initialize DVC
 
 ```bash
-pip install -r requirements.txt
+dvc init
 ```
 
-Authentication is handled automatically inside Vertex AI Workbench via the instance's service account — no key files needed.
+Configure remote storage
+
+```bash
+dvc remote add -d storage gs://iris-dvc-23f3002872
+```
+
+Track datasets
+
+```bash
+dvc add data/raw/iris.csv
+dvc add data/v1/data.csv
+dvc add data/v2/data.csv
+```
+
+Track model
+
+```bash
+dvc add models/model.joblib
+```
+
+Upload versioned files
+
+```bash
+dvc push
+```
+
+Restore previous versions
+
+```bash
+git checkout <commit_hash>
+dvc checkout
+```
+
+Return to latest version
+
+```bash
+git checkout week_2
+dvc checkout
+```
 
 ---
 
-## Usage
-
-### Training
+# Training
 
 ```bash
 python train.py \
-  --data-bucket iris-data-23f3002872 \
-  --artifact-bucket iris-artifacts-23f3002872 \
-  --data-version raw
+    --data-bucket iris-data-23f3002872 \
+    --artifact-bucket iris-artifacts-23f3002872 \
+    --data-version raw
 ```
 
-The script prints an `ARTIFACT_PREFIX` line, e.g. `artifacts/2026-06-21T07-37-58`.
+---
 
-### Inference
-
-Pass the prefix from the training run:
+# Inference
 
 ```bash
 python infer.py \
-  --artifact-bucket iris-artifacts-23f3002872 \
-  --artifact-prefix artifacts/2026-06-21T07-37-58
+    --artifact-bucket iris-artifacts-23f3002872 \
+    --artifact-prefix artifacts/<timestamp>
 ```
 
 ---
 
-## Results
+# Version Control Workflow
 
-The pipeline was executed multiple times across data versions. Accuracy on the held-out eval set:
-
-| Data version | Rows | Holdout accuracy |
-|--------------|------|------------------|
-| `raw` (run 1) | 150 | 0.983 |
-| `raw` (run 2) | 150 | 0.983 |
-| `v1` | 101 | 0.951 |
-| `v2` | 49  | 1.000 |
-
-The `raw` runs produce two independent timestamped artifact folders (demonstrating reproducible, traceable runs). The `v1` / `v2` runs show how results vary across data versions — accuracy on the smaller `v2` subset reaches 1.0, while the larger `v1` sits lower at 0.951.
+```
+Modify Dataset
+      │
+      ▼
+Train Model
+      │
+      ▼
+dvc add
+      │
+      ▼
+dvc push
+      │
+      ▼
+git commit
+      │
+      ▼
+Switch Versions
+git checkout + dvc checkout
+```
 
 ---
 
-## Tasks completed
+# Results
 
-- **Task 1** — Activated GCP, set up Vertex AI Workbench, enabled required APIs.
-- **Task 2** — Created GCS buckets and uploaded the IRIS dataset.
-- **Task 3** — Executed the training pipeline; artifacts stored in timestamped GCS folders.
-- **Task 4** — Separate inference script fetches the trained model from GCS and predicts on the eval set.
-- **Task 5** — Ran training + inference twice → two separate timestamped artifact folders.
-- **Task 6 (optional)** — Ran the pipeline across `v1` and `v2` data versions and compared results.
+The pipeline successfully:
+
+* trained multiple IRIS models
+* stored timestamped artifacts inside Google Cloud Storage
+* versioned datasets using DVC
+* versioned model artifacts using DVC
+* restored previous dataset/model versions using Git + DVC
+* maintained complete reproducibility across training iterations
+
+---
+
+# Assignment Tasks Completed
+
+## Week 1
+
+* Created Vertex AI Workbench instance.
+* Created Google Cloud Storage buckets.
+* Uploaded dataset.
+* Implemented training pipeline.
+* Implemented inference pipeline.
+* Stored timestamped artifacts inside GCS.
+
+## Week 2
+
+* Initialized DVC.
+* Configured Google Cloud Storage as DVC Remote.
+* Versioned datasets using DVC.
+* Versioned model artifacts using DVC.
+* Created multiple training iterations.
+* Demonstrated Git + DVC checkout for version restoration.
+* Pushed all DVC metadata, pointer files and source code to GitHub.
+
+---
+
+# Technologies Used
+
+* Python
+* Google Cloud Platform
+* Vertex AI Workbench
+* Google Cloud Storage
+* Git
+* Data Version Control (DVC)
+* scikit-learn
+* pandas
+* joblib
+
+---
+
+# Author
+
+**Khushi Choudhary**
+**Roll Number:** 23f3002872
+**IIT Madras BS Degree Programme**
