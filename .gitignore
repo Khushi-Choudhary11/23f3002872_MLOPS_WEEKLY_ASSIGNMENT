@@ -1,0 +1,82 @@
+```gitignore
+# ==========================
+# Python
+# ==========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# ==========================
+# Jupyter
+# ==========================
+.ipynb_checkpoints/
+*.ipynb
+
+# ==========================
+# IDE
+# ==========================
+.vscode/
+.idea/
+
+# ==========================
+# OS Files
+# ==========================
+.DS_Store
+Thumbs.db
+
+# ==========================
+# Logs
+# ==========================
+*.log
+
+# ==========================
+# Python Testing
+# ==========================
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# ==========================
+# DVC Cache
+# ==========================
+.dvc/cache/
+
+# Ignore DVC generated cache/temp files
+.dvc/tmp/
+
+# ==========================
+# Model Artifacts
+# (tracked via DVC instead)
+# ==========================
+models/*.joblib
+models/*.pkl
+models/*.sav
+models/*.onnx
+
+# ==========================
+# Temporary Files
+# ==========================
+*.tmp
+*.temp
+
+# ==========================
+# Local Environment
+# ==========================
+.env
+.env.*
+
+# ==========================
+# Mac/Linux
+# ==========================
+*.swp
+*.swo
+```
