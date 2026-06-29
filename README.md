@@ -1,3 +1,5 @@
+Video Link : https://drive.google.com/file/d/10Z5Ypc8RkvUKdrthdg5q7TX5di7y-NwH/view?usp=sharing
+
 # IRIS ML Pipeline with DVC on Vertex AI — Week 2 MLOps Assignment
 
 **Author:** Khushi Choudhary
