@@ -18,6 +18,7 @@ import tempfile
 
 import joblib
 import pandas as pd
+from feast import FeatureStore
 from google.cloud import storage
 from sklearn import metrics
 
@@ -51,12 +52,46 @@ def main():
 
     model = joblib.load(model_local)
     eval_df = pd.read_csv(eval_local)
+    store = FeatureStore(repo_path="feast_repo/feature_repo")
+    print("Connected to Feast Feature Store")
 
     # ---- 2. Inference ----
-    eval_df["predicted_species"] = model.predict(eval_df[FEATURES])
-    if TARGET in eval_df.columns:
-        acc = metrics.accuracy_score(eval_df[TARGET], eval_df["predicted_species"])
-        print(f"Inference accuracy on eval set: {acc:.3f}")
+    predictions = []
+
+    for _, row in eval_df.iterrows():
+    
+        online_features = store.get_online_features(
+            features=[
+                "iris_features:sepal_length",
+                "iris_features:sepal_width",
+                "iris_features:petal_length",
+                "iris_features:petal_width",
+            ],
+            entity_rows=[
+                {"iris_id": int(row["iris_id"])}
+            ],
+        ).to_dict()
+    
+        feature_vector = pd.DataFrame(
+            {
+                "sepal_length": [online_features["sepal_length"][0]],
+                "sepal_width": [online_features["sepal_width"][0]],
+                "petal_length": [online_features["petal_length"][0]],
+                "petal_width": [online_features["petal_width"][0]],
+            }
+        )
+    
+        prediction = model.predict(feature_vector)[0]
+        predictions.append(prediction)
+    
+    eval_df["predicted_species"] = predictions
+    
+    acc = metrics.accuracy_score(
+        eval_df[TARGET],
+        eval_df["predicted_species"],
+    )
+    
+    print(f"Inference accuracy using Feast Online Store: {acc:.3f}")
 
     # ---- 3. Write predictions back to the ARTIFACTS bucket ----
     pred_local = os.path.join(local_dir, "predictions.csv")

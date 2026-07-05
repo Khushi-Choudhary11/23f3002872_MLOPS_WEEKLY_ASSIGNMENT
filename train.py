@@ -26,6 +26,7 @@ import tempfile
 
 import joblib
 import pandas as pd
+from feast import FeatureStore
 from google.cloud import storage
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier
@@ -73,13 +74,46 @@ def main():
     data_bucket.blob(data_blob_path).download_to_filename(local_csv)
     data = pd.read_csv(local_csv)
     logger.info("Loaded %d rows", len(data))
+    data["iris_id"] = range(len(data))
+    data["event_timestamp"] = pd.Timestamp.now()
+    store = FeatureStore(repo_path="feast_repo/feature_repo")
+    logger.info("Connected to Feast Feature Store")
+    entity_df = data[["iris_id", "event_timestamp"]]
+    
 
     # ---- 2. Split + train ----
+    historical_features = store.get_historical_features(
+        entity_df=entity_df,
+        features=[
+            "iris_features:sepal_length",
+            "iris_features:sepal_width",
+            "iris_features:petal_length",
+            "iris_features:petal_width",
+        ],
+    ).to_df()
+    logger.info(
+    "Retrieved %d historical feature rows from Feast",
+    len(historical_features),
+)
+    
+    # Combine Feast features with the target label
+    training_data = historical_features.merge(
+    data[["iris_id", "event_timestamp", TARGET]],
+    on="iris_id",
+)
+    
     train, test = train_test_split(
-        data, test_size=args.test_size, stratify=data[TARGET], random_state=42
+        training_data,
+        test_size=args.test_size,
+        stratify=training_data[TARGET],
+        random_state=42,
     )
-    X_train, y_train = train[FEATURES], train[TARGET]
-    X_test, y_test = test[FEATURES], test[TARGET]
+    
+    X_train = train[FEATURES]
+    y_train = train[TARGET]
+    
+    X_test = test[FEATURES]
+    y_test = test[TARGET]
 
     model = DecisionTreeClassifier(max_depth=args.max_depth, random_state=1)
     model.fit(X_train, y_train)
