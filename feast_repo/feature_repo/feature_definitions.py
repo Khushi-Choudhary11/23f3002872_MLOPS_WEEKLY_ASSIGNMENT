@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from feast import Entity, FeatureView, Field, FileSource
+from feast import Entity, FeatureView, Field, FileSource, BigQuerySource
 from feast.types import Float32, Int64
 
 # ---------------------------------------------------
@@ -10,16 +10,14 @@ from feast.types import Float32, Int64
 iris = Entity(
     name="iris_id",
     join_keys=["iris_id"],
-    value_type=Int64,
 )
-
 # ---------------------------------------------------
 # Data Source
 # ---------------------------------------------------
 
-iris_source = FileSource(
+iris_source = BigQuerySource(
     name="iris_source",
-    path="data/iris.parquet",
+    table="mlops-project-500020.iris_feast.iris_features",
     timestamp_field="event_timestamp",
 )
 

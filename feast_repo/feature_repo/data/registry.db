@@ -3,41 +3,41 @@
 
 iris_id"iris_idJ
 feast_repo
-šÆ©ÒèÃöÉšÆ©ÒèÃöÉ
+¼„ªÒ€Şª§ê®ªÒèúŒˆ
 A
 !
 __dummy"
 __dummy_idJ
 feast_repo
-šÆ©ÒØŒ˜ÊšÆ©ÒØŒ˜Ê1"$d7d06ee7-0550-477d-bc8b-090986e4bcae*‡Ñ©Òàµ“2Ü
-•
+¼„ªÒà…½§ê®ªÒ°£ˆ1"$64a2022c-bda0-4016-8e1e-766874cc8735*²¯ªÒÀÌ™ş2ÿ
+¸
 iris_features
 feast_repoiris_id"
 sepal_length"
 sepal_width"
 petal_length"
-petal_width2€ç„:‰event_timestampZdata/iris.parquetŠ1feast.infra.offline_stores.file_source.FileSource¢iris_source’šÆ©Ò¨Üï˜"šÆ©Ò€ÛÂÉ@b
+petal_width2€ç„:¬event_timestampb/
+-mlops-project-500020.iris_feast.iris_featuresŠ9feast.infra.offline_stores.bigquery_source.BigQuerySource¢iris_source’¼„ªÒèÑ½"ê®ªÒø¥õ…@b
 iris_id’latestB
-šÆ©ÒĞ£­Ê‡Ñ©Òğœ“
-€Â¯ğ¤Ï©Ò
-€Â¯ğıĞ©Ò0R¬
-©
-,feast.infra.online_stores.sqlite.SqliteTable"y
-]/home/jupyter/23f3002872_MLOPS_WEEKLY_ASSIGNMENT/feast_repo/feature_repo/data/online_store.dbfeast_repo_iris_featuresb–event_timestampZdata/iris.parquetŠ1feast.infra.offline_stores.file_source.FileSource¢iris_sourceª
-feast_repo’šÆ©Ò¨Üï˜"šÆ©Ò€ÛÂÉŠ,
+¼„ªÒàæó¦²¯ªÒ¨¥ÿı
+€Â¯ğÆ„ªÒ
+€Â¯ğ§¯ªÒ0b¹event_timestampb/
+-mlops-project-500020.iris_feast.iris_featuresŠ9feast.infra.offline_stores.bigquery_source.BigQuerySource¢iris_sourceª
+feast_repo’¼„ªÒèÑ½"ê®ªÒø¥õ…Š+
 
 
-feast_repo
-šÆ©Òè‘šÆ©Òè‘’™
-–
+feast_repo
+¼„ªÒèíêxé®ªÒèß¡ş’¾
+»
 iris_features
-feast_repo"feature_view*¶
-•
+feast_repo"feature_view*Û
+º
 iris_features
 feast_repoiris_id"
 sepal_length"
 sepal_width"
 petal_length"
-petal_width2€ç„:‰event_timestampZdata/iris.parquetŠ1feast.infra.offline_stores.file_source.FileSource¢iris_source’šÆ©Ò¨Üï˜"šÆ©Ò€ÛÂÉ@b
+petal_width2€ç„:®event_timestampb1
+/mlops-project-500020.iris_feast.iris_features_1Š9feast.infra.offline_stores.bigquery_source.BigQuerySource¢iris_source’¼„ªÒèÑ½"¼„ªÒ°²à¦@b
 iris_id’latest
-šÆ©ÒĞ£­ÊšÆ©ÒĞ£­Ê2šÆ©Ò˜–ıÊB$dd8878c9-3308-4de4-bcae-3b7759e8aa2b
+¼„ªÒàæó¦¼„ªÒàæó¦2¼„ªÒÈÒ¦§B$b4918a45-3f39-4392-ae5c-b4ce06a51e1d

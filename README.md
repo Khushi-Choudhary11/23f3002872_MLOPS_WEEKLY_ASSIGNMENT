@@ -1,141 +1,424 @@
-# IRIS ML Pipeline on Vertex AI — Week 1 MLOps Assignment
+# IRIS ML Pipeline with Feast Feature Store on Vertex AI — Week 3 MLOps Assignment
 
-**Author:** Khushi Choudhary
-**Roll Number:** 23f3002872
-**Course:** MLOps (IIT Madras BS)
-
-An end-to-end machine learning pipeline for the classic IRIS classification problem, built on Google Cloud Platform. Data and model artifacts are managed through Google Cloud Storage (GCS), and the pipeline runs on a Vertex AI Workbench instance.
-
-The pipeline is intentionally minimal — fetch data from the cloud, train a model, and store artifacts back to the cloud — so it can serve as the foundation for adding MLOps tooling (DVC, Feast, experiment tracking, CI/CD) in later weeks.
+**Author:** Khushi Choudhary  
+**Roll Number:** 23f3002872  
+**Course:** MLOps (IIT Madras BS Degree Programme)
 
 ---
 
-## Architecture
+# Overview
 
-```
-Vertex AI Workbench  ──►  reads data from   ──►  gs://iris-data-23f3002872
-        │
-        │  train.py / infer.py
-        ▼
-Decision Tree model  ──►  writes artifacts  ──►  gs://iris-artifacts-23f3002872
-                                                  └── artifacts/<timestamp>/
+This repository extends the **Week 1 IRIS Machine Learning Pipeline** by integrating **Feast Feature Store** into the workflow.
+
+The objective of this assignment is to eliminate **training-serving skew** by ensuring that the same engineered features are used during both **model training** and **online inference**.
+
+The project combines:
+
+- Google Cloud Storage (GCS)
+- Vertex AI Workbench
+- Feast Feature Store
+- SQLite
+- Git
+- Scikit-learn
+
+to build a production-style machine learning workflow where feature engineering is centralized and shared across training and inference.
+
+---
+
+# Learning Objectives
+
+This implementation demonstrates:
+
+- Understanding of Feature Stores
+- Offline Feature Retrieval
+- Online Feature Retrieval
+- Feature Materialization
+- Training-Serving Consistency
+- End-to-End ML Pipeline on Google Cloud Platform
+
+---
+
+# Architecture
+
+```text
+                           Git Repository
+                                  │
+                                  ▼
+                      Vertex AI Workbench
+                                  │
+            ┌─────────────────────┼──────────────────────┐
+            │                     │                      │
+            ▼                     ▼                      ▼
+     Google Cloud Storage     Feast Offline Store   Feast Online Store
+      (Raw IRIS Dataset)        (Parquet File)         (SQLite)
+            │                     │                      │
+            └───────────────┬─────┴──────────────────────┘
+                            │
+                            ▼
+                  Training & Inference Pipeline
+                            │
+                            ▼
+              Google Cloud Storage Artifact Bucket
 ```
 
-Two separate GCS buckets are used:
+---
+
+# Google Cloud Storage Buckets
 
 | Bucket | Purpose |
-|--------|---------|
-| `iris-data-23f3002872` | Stores the dataset (raw, v1, v2 versions) |
-| `iris-artifacts-23f3002872` | Stores model + logs + predictions, organized by run timestamp |
+|----------|----------|
+| **iris-data-23f3002872** | Stores the IRIS dataset used for training |
+| **iris-artifacts-23f3002872** | Stores trained models, metrics, evaluation files, logs and predictions |
 
 ---
 
-## Dataset
+# Repository Structure
 
-R.A. Fisher's IRIS dataset — four numerical features (`sepal_length`, `sepal_width`, `petal_length`, `petal_width`) and a `species` target (setosa, versicolor, virginica).
-
-Three versions live in `data/` and are uploaded to the data bucket:
-
-| Version | Path in bucket | Rows |
-|---------|----------------|------|
-| `raw` | `data/raw/iris.csv` | 150 |
-| `v1`  | `data/v1/data.csv`  | 101 |
-| `v2`  | `data/v2/data.csv`  | 49  |
-
----
-
-## Repository structure
-
-```
+```text
 .
-├── train.py          # fetch data from GCS, train, upload timestamped artifacts
-├── infer.py          # fetch a trained model from GCS, predict on the eval set
-├── requirements.txt  # Python dependencies
-├── data/
-│   ├── raw/iris.csv
-│   ├── v1/data.csv
-│   └── v2/data.csv
-└── README.md
+├── data
+│   ├── raw
+│   │   └── iris.csv
+│   ├── v1
+│   └── v2
+│
+├── feast_repo
+│   └── feature_repo
+│       ├── data
+│       │   ├── iris.parquet
+│       │   ├── registry.db
+│       │   └── online_store.db
+│       ├── feature_definitions.py
+│       ├── feature_store.yaml
+│       └── test_workflow.py
+│
+├── train.py
+├── infer.py
+├── requirements.txt
+├── README.md
+└── .gitignore
 ```
 
 ---
 
-## How it works
+# Dataset
 
-### `train.py`
-1. Downloads the chosen data version from the **data bucket**.
-2. Splits the data into stratified train/eval sets (`test_size=0.4`, `random_state=42`).
-3. Trains a `DecisionTreeClassifier` (`max_depth=3`).
-4. Uploads the following to `gs://iris-artifacts-23f3002872/artifacts/<timestamp>/`:
-   - `model.joblib` — the trained model
-   - `metrics.json` — run metadata and accuracy
-   - `eval.csv` — the held-out evaluation set (so inference reuses the exact split)
-   - `train.log` — the training log
+The project uses the classic **IRIS dataset** containing 150 flower samples.
 
-Each run gets its own UTC-timestamped folder, making runs traceable and comparable.
+## Features
 
-### `infer.py`
-1. Downloads `model.joblib` and `eval.csv` from a chosen timestamp folder in the **artifacts bucket**.
-2. Runs predictions on the evaluation set.
-3. Writes `predictions.csv` back into the same folder.
+- sepal_length
+- sepal_width
+- petal_length
+- petal_width
+
+## Target
+
+- species
 
 ---
 
-## Setup
+# Feast Components
+
+## Entity
+
+```
+iris_id
+```
+
+A unique identifier assigned to every IRIS sample.
+
+---
+
+## Data Source
+
+The dataset is converted into a Parquet file and registered as a Feast FileSource.
+
+```
+iris.parquet
+```
+
+---
+
+## Feature View
+
+Feature View:
+
+```
+iris_features
+```
+
+contains
+
+- sepal_length
+- sepal_width
+- petal_length
+- petal_width
+
+These features are shared by both training and inference.
+
+---
+
+# Week 3 Workflow
+
+```text
+Raw CSV Dataset
+       │
+       ▼
+Download from GCS
+       │
+       ▼
+Convert to Parquet
+       │
+       ▼
+Feast Feature Store
+       │
+ ┌─────┴─────────┐
+ │               │
+ ▼               ▼
+Offline Store   Online Store
+ │               │
+ ▼               ▼
+Training      Inference
+```
+
+---
+
+# Task 1 – Initialize Feast Repository
+
+A Feast Feature Repository was created and configured with:
+
+- SQLite Registry
+- SQLite Online Store
+- Local FileSource
+
+Repository initialized using:
 
 ```bash
-pip install -r requirements.txt
+feast apply
 ```
-
-Authentication is handled automatically inside Vertex AI Workbench via the instance's service account — no key files needed.
 
 ---
 
-## Usage
+# Task 2 – Define Entities, Data Sources & Feature Views
 
-### Training
+The following Feast objects were created:
+
+### Entity
+
+```
+iris_id
+```
+
+### Data Source
+
+```
+iris.parquet
+```
+
+### Feature View
+
+```
+iris_features
+```
+
+containing
+
+- sepal_length
+- sepal_width
+- petal_length
+- petal_width
+
+---
+
+# Task 3 – Apply Definitions & Materialize Features
+
+Feature definitions were registered using
+
+```bash
+feast apply
+```
+
+Features were materialized into the SQLite Online Store using
+
+```bash
+feast materialize 2020-01-01T00:00:00 <current_time>
+```
+
+Materialization populated the online feature store for real-time inference.
+
+---
+
+# Task 4 – Offline Feature Retrieval
+
+Instead of reading feature columns directly from the dataset,
+
+the training pipeline now retrieves historical features using Feast.
+
+Workflow
+
+```text
+CSV Dataset
+      │
+      ▼
+Entity DataFrame
+      │
+      ▼
+get_historical_features()
+      │
+      ▼
+Decision Tree Training
+```
+
+Training command
 
 ```bash
 python train.py \
-  --data-bucket iris-data-23f3002872 \
-  --artifact-bucket iris-artifacts-23f3002872 \
-  --data-version raw
+    --data-bucket iris-data-23f3002872 \
+    --artifact-bucket iris-artifacts-23f3002872 \
+    --data-version raw
 ```
 
-The script prints an `ARTIFACT_PREFIX` line, e.g. `artifacts/2026-06-21T07-37-58`.
+Training artifacts generated
 
-### Inference
+- model.joblib
+- metrics.json
+- eval.csv
+- train.log
 
-Pass the prefix from the training run:
+All artifacts are uploaded to the Google Cloud Storage artifact bucket.
+
+---
+
+# Task 5 – Online Feature Retrieval
+
+Inference no longer uses feature columns directly from the evaluation dataset.
+
+Instead,
+
+features are retrieved from Feast Online Store using the entity
+
+```
+iris_id
+```
+
+Workflow
+
+```text
+iris_id
+      │
+      ▼
+get_online_features()
+      │
+      ▼
+Decision Tree Prediction
+```
+
+Inference command
 
 ```bash
 python infer.py \
-  --artifact-bucket iris-artifacts-23f3002872 \
-  --artifact-prefix artifacts/2026-06-21T07-37-58
+    --artifact-bucket iris-artifacts-23f3002872 \
+    --artifact-prefix artifacts/<timestamp>
+```
+
+Generated output
+
+```
+predictions.csv
+```
+
+which is uploaded to the artifact bucket.
+
+---
+
+# Training-Serving Consistency
+
+Traditional ML pipelines often duplicate feature engineering logic between training and inference, leading to **training-serving skew**.
+
+Using Feast ensures that
+
+- training retrieves historical features from the Offline Store
+- inference retrieves live features from the Online Store
+
+Both stages consume exactly the same feature definitions.
+
+---
+
+# Results
+
+The pipeline successfully
+
+- Initialized Feast Feature Repository
+- Created Entity, Data Source and Feature View
+- Materialized Features into SQLite Online Store
+- Retrieved Historical Features using Feast Offline Store
+- Trained Decision Tree Classifier using Feast Features
+- Retrieved Online Features using Feast Online Store
+- Generated Predictions
+- Uploaded all artifacts to Google Cloud Storage
+
+Final Model Accuracy
+
+```
+98.3%
 ```
 
 ---
 
-## Results
+# Assignment Tasks Completed
 
-The pipeline was executed multiple times across data versions. Accuracy on the held-out eval set:
+✅ Initialize Feast Feature Repository
 
-| Data version | Rows | Holdout accuracy |
-|--------------|------|------------------|
-| `raw` (run 1) | 150 | 0.983 |
-| `raw` (run 2) | 150 | 0.983 |
-| `v1` | 101 | 0.951 |
-| `v2` | 49  | 1.000 |
+✅ Configure SQLite Registry and Online Store
 
-The `raw` runs produce two independent timestamped artifact folders (demonstrating reproducible, traceable runs). The `v1` / `v2` runs show how results vary across data versions — accuracy on the smaller `v2` subset reaches 1.0, while the larger `v1` sits lower at 0.951.
+✅ Define Entity
+
+✅ Define FileSource
+
+✅ Define Feature View
+
+✅ Apply Feature Definitions
+
+✅ Materialize Features
+
+✅ Retrieve Historical Features
+
+✅ Train Model using Feast
+
+✅ Retrieve Online Features
+
+✅ Perform Online Inference
 
 ---
 
-## Tasks completed
+# Technologies Used
 
-- **Task 1** — Activated GCP, set up Vertex AI Workbench, enabled required APIs.
-- **Task 2** — Created GCS buckets and uploaded the IRIS dataset.
-- **Task 3** — Executed the training pipeline; artifacts stored in timestamped GCS folders.
-- **Task 4** — Separate inference script fetches the trained model from GCS and predicts on the eval set.
-- **Task 5** — Ran training + inference twice → two separate timestamped artifact folders.
-- **Task 6 (optional)** — Ran the pipeline across `v1` and `v2` data versions and compared results.
+- Python
+- Feast 0.64
+- Google Cloud Platform
+- Vertex AI Workbench
+- Google Cloud Storage
+- SQLite
+- Scikit-learn
+- Pandas
+- Joblib
+- Git
+
+---
+
+# References
+
+- Feast Documentation: https://docs.feast.dev/
+- Google Cloud Storage Documentation: https://cloud.google.com/storage/docs
+- Vertex AI Documentation: https://cloud.google.com/vertex-ai/docs
+
+---
+
+# Author
+
+**Khushi Choudhary**
+
+**Roll Number:** 23f3002872
+
+**IIT Madras BS Degree Programme**
