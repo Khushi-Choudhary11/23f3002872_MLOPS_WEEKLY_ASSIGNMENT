@@ -18,9 +18,6 @@ feast==0.64.0
 # Testing
 pytest
 
-# CI
-cml
-
 # Utilities
 PyYAML
 requests
