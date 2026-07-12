@@ -1,48 +1,56 @@
-[Demo Video](https://drive.google.com/drive/folders/1jaPKTEQNTdIMncwfoCD7LT8j0xLJR3nD?usp=sharing) :--> https://drive.google.com/drive/folders/1jaPKTEQNTdIMncwfoCD7LT8j0xLJR3nD?usp=sharing
+# IRIS ML Pipeline with Feast, DVC & GitHub Actions CI — Week 4 MLOps Assignment
 
-# IRIS ML Pipeline with Feast Feature Store — Week 3 MLOps Assignment
+## Demo Video
+
+https://drive.google.com/drive/folders/1jaPKTEQNTdIMncwfoCD7LT8j0xLJR3nD?usp=sharing
+
+---
 
 # Overview
 
-This repository extends the IRIS Machine Learning pipeline by integrating **Feast Feature Store** into the existing Google Cloud Platform workflow.
+This repository implements a complete end-to-end MLOps pipeline for the IRIS classification problem on **Google Cloud Platform**.
 
-Week 1 focused on building a cloud-based ML pipeline.
+The project evolved over multiple assignments:
 
-Week 3 introduces a Feature Store layer so that both model training and real-time inference retrieve features from a single source of truth, eliminating training-serving skew.
+- **Week 1:** Built a cloud-based ML training pipeline on Vertex AI and Google Cloud Storage.
+- **Week 2:** Added **DVC** for version-controlled datasets and model artifacts.
+- **Week 3:** Integrated **Feast Feature Store** to eliminate training-serving skew using offline and online feature stores.
+- **Week 4:** Added **Continuous Integration (CI)** using **GitHub Actions**, automated testing with **pytest**, DVC data retrieval, and **CML** reporting for pull requests.
 
-The project was implemented using:
-
-- Google Cloud Platform
-- Vertex AI Workbench
-- Google Cloud Storage
-- Feast Feature Store
-- BigQuery (Optional Task)
-- SQLite Online Store
-- Git
-- Python
-- scikit-learn
+Every push and pull request automatically validates the ML pipeline before code is merged.
 
 ---
 
 # Architecture
 
-```
-                     GitHub Repository
-                            │
-                            ▼
-                  Vertex AI Workbench
-                            │
-        ┌───────────────────┼────────────────────┐
-        │                   │                    │
-        ▼                   ▼                    ▼
-  Data Bucket         Feast Feature Store    Artifact Bucket
-       │                 Offline Store             │
-       │                 Online Store             │
-       ▼                      │                   ▼
-    Raw Data ─────────► Feature Retrieval ───► Model Training
+```text
+                        GitHub Repository
+                               │
+                     Push / Pull Request
                                │
                                ▼
-                        Online Inference
+                     GitHub Actions CI
+                               │
+        ┌──────────────────────┼──────────────────────┐
+        │                      │                      │
+        ▼                      ▼                      ▼
+ Authenticate to GCP      DVC Pull              Install Dependencies
+        │                      │                      │
+        └──────────────┬───────┴──────────────────────┘
+                       ▼
+                  Run pytest Tests
+                       │
+        ┌──────────────┴───────────────┐
+        │                              │
+        ▼                              ▼
+ Data Validation Tests         Model Evaluation Tests
+        │                              │
+        └──────────────┬───────────────┘
+                       ▼
+               Generate Test Report
+                       │
+                       ▼
+               Publish using CML
 ```
 
 ---
@@ -55,7 +63,7 @@ The project was implemented using:
 gs://iris-data-23f3002872
 ```
 
-Stores IRIS datasets.
+Stores versioned IRIS datasets.
 
 ---
 
@@ -67,11 +75,21 @@ gs://iris-artifacts-23f3002872
 
 Stores:
 
-- trained model
-- metrics
-- evaluation data
+- trained models
+- evaluation metrics
 - predictions
+- evaluation dataset
 - logs
+
+---
+
+## DVC Remote
+
+```
+gs://iris-dvc-23f3002872
+```
+
+Stores version-controlled datasets and models.
 
 ---
 
@@ -86,15 +104,19 @@ Contains:
 - feature_store.yaml
 - feature_definitions.py
 - registry
-- online store
-- feature metadata
+- SQLite online store
+- offline feature metadata
 
 ---
 
 # Repository Structure
 
-```
+```text
 .
+├── .github
+│   └── workflows
+│       └── ci.yml
+│
 ├── data
 │   ├── raw
 │   ├── v1
@@ -102,13 +124,15 @@ Contains:
 │
 ├── feast_repo
 │   └── feature_repo
-│       ├── feature_store.yaml
-│       ├── feature_definitions.py
-│       └── data
+│
+├── models
+│
+├── tests
+│   ├── test_data.py
+│   └── test_model.py
 │
 ├── train.py
 ├── infer.py
-├── prepare_feast_data.ipynb
 ├── requirements.txt
 └── README.md
 ```
@@ -119,48 +143,30 @@ Contains:
 
 The IRIS dataset contains:
 
-Features
+### Features
 
 - sepal_length
 - sepal_width
 - petal_length
 - petal_width
 
-Target
+### Target
 
 - species
 
-Additional Feast columns
+### Feast Metadata
 
 - iris_id
 - event_timestamp
 
 ---
 
-# Feast Concepts Used
+# Feast Integration
 
 ## Entity
 
 ```
 iris_id
-```
-
-Uniquely identifies every Iris sample.
-
----
-
-## Data Source
-
-Initially
-
-```
-Parquet File
-```
-
-Optional Task
-
-```
-BigQuery Table
 ```
 
 ---
@@ -182,7 +188,7 @@ Contains
 
 ## Offline Store
 
-Used during training through
+Used during training using
 
 ```
 get_historical_features()
@@ -194,7 +200,7 @@ get_historical_features()
 
 SQLite Online Store
 
-Used during inference through
+Used during inference using
 
 ```
 get_online_features()
@@ -202,103 +208,122 @@ get_online_features()
 
 ---
 
-# Assignment Tasks
+# Continuous Integration (Week 4)
 
-## Task 1
+GitHub Actions automatically executes the CI pipeline whenever code is pushed or a Pull Request is opened.
 
-Initialized Feast Feature Repository.
+Workflow includes:
 
-Completed ✓
-
----
-
-## Task 2
-
-Created
-
-- Entity
-- Data Source
-- Feature View
-
-Completed ✓
+- Repository checkout
+- Python setup
+- Dependency installation
+- Google Cloud authentication
+- DVC data retrieval
+- Data validation tests
+- Model evaluation tests
+- Test report generation
+- CML report publishing on Pull Requests
 
 ---
 
-## Task 3
+# Data Validation Tests
 
-Applied Feature Definitions
+Implemented using **pytest**.
 
-Materialized Features
+Tests verify:
 
-Completed ✓
+- Dataset exists
+- Expected schema
+- No missing values
+- Correct numeric feature types
+- Reasonable feature value ranges
 
----
+Example:
 
-## Task 4
-
-Training now retrieves historical features using Feast instead of directly reading the CSV.
-
-Workflow
-
-```
-CSV
-   │
-   ▼
-Feast Offline Store
-   │
-   ▼
-Historical Features
-   │
-   ▼
-Decision Tree Training
+```bash
+pytest tests/test_data.py
 ```
 
-Completed ✓
+---
+
+# Model Evaluation Tests
+
+Tests verify:
+
+- Model file exists
+- Model loads successfully
+- Accuracy exceeds threshold
+- Precision exceeds threshold
+
+Example:
+
+```bash
+pytest tests/test_model.py
+```
 
 ---
 
-## Task 5
+# GitHub Actions Workflow
 
-Inference retrieves features from the Feast Online Store.
-
-Workflow
+Location
 
 ```
-Sample ID
-    │
-    ▼
-SQLite Online Store
-    │
-    ▼
-Feature Vector
-    │
-    ▼
-Prediction
+.github/workflows/ci.yml
 ```
 
-Completed ✓
+The workflow automatically:
+
+- Checks out the repository
+- Installs dependencies
+- Authenticates with Google Cloud
+- Executes
+
+```
+dvc pull
+```
+
+- Runs
+
+```
+pytest
+```
+
+- Generates a CI report
+- Publishes results through CML
+
+Workflow triggers:
+
+- Push
+- Pull Request
 
 ---
 
-## Task 6 (Optional)
+# DVC Integration
 
-Configured Feast to use BigQuery as the Offline Store.
+Version-controlled artifacts include
 
-Changes:
+```
+data/raw/iris.csv
+models/model.joblib
+```
 
-- Uploaded IRIS dataset to BigQuery
-- Replaced FileSource with BigQuerySource
-- Updated feature_store.yaml
-- Applied Feature Definitions
-- Materialized Features
+Retrieve versioned data using
 
-Completed ✓
+```bash
+dvc pull
+```
+
+Upload new versions using
+
+```bash
+dvc push
+```
 
 ---
 
 # Training
 
-```
+```bash
 python train.py \
 --data-bucket iris-data-23f3002872 \
 --artifact-bucket iris-artifacts-23f3002872 \
@@ -309,7 +334,7 @@ python train.py \
 
 # Inference
 
-```
+```bash
 python infer.py \
 --artifact-bucket iris-artifacts-23f3002872 \
 --artifact-prefix artifacts/<timestamp>
@@ -317,58 +342,138 @@ python infer.py \
 
 ---
 
-# Results
+# Assignment Tasks
 
-Training Accuracy
+## Task 1
 
-```
-98.3%
-```
+Implemented automated data validation tests using pytest.
 
-Inference Accuracy
-
-```
-98.3%
-```
-
-Training and inference use identical Feast feature definitions, eliminating training-serving skew.
+**Completed ✓**
 
 ---
 
-# Technologies
+## Task 2
+
+Implemented automated model evaluation tests.
+
+**Completed ✓**
+
+---
+
+## Task 3
+
+Configured GitHub Actions to:
+
+- install dependencies
+- authenticate to GCP
+- execute DVC pull
+- run pytest
+
+**Completed ✓**
+
+---
+
+## Task 4
+
+Enabled CI execution on
+
+- Push
+- Pull Request
+
+**Completed ✓**
+
+---
+
+## Task 5
+
+Integrated CML to generate automated CI reports for Pull Requests.
+
+**Completed ✓**
+
+---
+
+## Task 6
+
+Merged Week 4 implementation into the main branch through Pull Request after successful CI validation.
+
+**Completed ✓**
+
+---
+
+# Results
+
+## Data Validation
+
+✔ Dataset found
+
+✔ Schema verified
+
+✔ No missing values
+
+✔ Valid feature ranges
+
+---
+
+## Model Validation
+
+✔ Model loaded successfully
+
+✔ Accuracy threshold satisfied
+
+✔ Precision threshold satisfied
+
+---
+
+## CI Results
+
+✔ GitHub Actions passed
+
+✔ DVC Pull successful
+
+✔ pytest passed
+
+✔ Automated CI report generated
+
+---
+
+# Technologies Used
 
 - Python
+- scikit-learn
+- pandas
+- pytest
+- DVC
 - Feast
+- GitHub Actions
+- CML
 - Google Cloud Platform
 - Vertex AI Workbench
 - Google Cloud Storage
-- BigQuery
 - SQLite
-- scikit-learn
-- pandas
-- joblib
+- BigQuery
 - Git
 
 ---
 
 # Learning Outcomes
 
-This assignment demonstrates
+This assignment demonstrates:
 
-- Feature Store integration
-- Historical feature retrieval
-- Online feature serving
-- Materialization
-- Offline vs Online Stores
-- Training-serving consistency
-- BigQuery integration with Feast
+- Continuous Integration for ML pipelines
+- Automated testing using pytest
+- GitHub Actions workflow creation
+- DVC integration inside CI
+- Secure authentication using GitHub Secrets
+- Continuous Machine Learning (CML)
+- Feature Store integration with Feast
+- End-to-end reproducible MLOps pipeline
 
 ---
 
 # Author
 
-Khushi Choudhary
+**Khushi Choudhary**
 
-Roll Number: 23f3002872
+**Roll Number:** 23f3002872
 
-IIT Madras BS Degree Programme
+**IIT Madras BS Degree Programme**
