@@ -6,10 +6,10 @@ IRIS training pipeline (two-bucket setup).
 
 Flow:
   1. Download chosen data version from the DATA bucket.
-  2. Train a DecisionTree on a stratified train split.
-  3. Save model.joblib + metrics + eval set + log locally.
-  4. Upload all of them to the ARTIFACTS bucket under artifacts/<timestamp>/.
-
+  2. Train multiple Decision Tree models using different hyperparameters.
+  3. Log parameters, metrics, and models to MLflow.
+  4. Register the trained models in the MLflow Model Registry.
+  5. Upload metrics, evaluation set, and logs to the ARTIFACTS bucket.
 Usage:
   python train.py --data-bucket iris-data-23f3002872 \
                   --artifact-bucket iris-artifacts-23f3002872 \
@@ -31,9 +31,12 @@ from google.cloud import storage
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier
 from sklearn import metrics
+import mlflow
+import mlflow.sklearn
 
 FEATURES = ["sepal_length", "sepal_width", "petal_length", "petal_width"]
 TARGET = "species"
+
 
 
 def parse_args():
@@ -51,6 +54,8 @@ def main():
     client = storage.Client()
     data_bucket = client.bucket(args.data_bucket)
     artifact_bucket = client.bucket(args.artifact_bucket)
+    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    mlflow.set_experiment("IRIS_Experiment")
 
     run_ts = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H-%M-%S")
     artifact_prefix = f"artifacts/{run_ts}"
@@ -115,15 +120,121 @@ def main():
     X_test = test[FEATURES]
     y_test = test[TARGET]
 
-    model = DecisionTreeClassifier(max_depth=args.max_depth, random_state=1)
-    model.fit(X_train, y_train)
-    acc = metrics.accuracy_score(y_test, model.predict(X_test))
-    logger.info("Holdout accuracy: %.3f", acc)
+    configs = [
+    
+        {
+            "max_depth":2,
+            "criterion":"gini"
+        },
+    
+        {
+            "max_depth":3,
+            "criterion":"entropy"
+        },
+    
+        {
+            "max_depth":5,
+            "criterion":"gini"
+        }
+    
+    ]
+    
+    for config in configs:
+    
+        with mlflow.start_run():
+    
+            mlflow.log_param(
+                "max_depth",
+                config["max_depth"]
+            )
+    
+            mlflow.log_param(
+                "criterion",
+                config["criterion"]
+            )
+    
+            mlflow.log_param(
+                "test_size",
+                args.test_size
+            )
+    
+            mlflow.log_param(
+                "data_version",
+                args.data_version
+            )
+    
+            model = DecisionTreeClassifier(
+    
+                max_depth=config["max_depth"],
+    
+                criterion=config["criterion"],
+    
+                random_state=1
+    
+            )
+    
+            model.fit(X_train,y_train)
+    
+            predictions=model.predict(X_test)
+    
+            acc=metrics.accuracy_score(
+                y_test,
+                predictions
+            )
+    
+            precision=metrics.precision_score(
+                y_test,
+                predictions,
+                average="weighted"
+            )
+    
+            recall=metrics.recall_score(
+                y_test,
+                predictions,
+                average="weighted"
+            )
+    
+            f1=metrics.f1_score(
+                y_test,
+                predictions,
+                average="weighted"
+            )
+    
+            mlflow.log_metric(
+                "accuracy",
+                acc
+            )
+    
+            mlflow.log_metric(
+                "precision",
+                precision
+            )
+    
+            mlflow.log_metric(
+                "recall",
+                recall
+            )
+    
+            mlflow.log_metric(
+                "f1_score",
+                f1
+            )
+
+            mlflow.sklearn.log_model(
+                sk_model=model,
+                artifact_path="model",
+                registered_model_name="iris_classifier"
+            )
+            
+            logger.info(
+                "Depth=%d Criterion=%s Accuracy=%.3f",
+                config["max_depth"],
+                config["criterion"],
+                acc
+            )
 
     # ---- 3. Save artifacts locally ----
     local_dir = tempfile.mkdtemp()
-    model_path = os.path.join(local_dir, "model.joblib")
-    joblib.dump(model, model_path)
 
     metrics_path = os.path.join(local_dir, "metrics.json")
     with open(metrics_path, "w") as f:
@@ -145,7 +256,6 @@ def main():
 
     # ---- 4. Upload to the ARTIFACTS bucket ----
     for fname, fpath in [
-        ("model.joblib", model_path),
         ("metrics.json", metrics_path),
         ("eval.csv", eval_path),
     ]:

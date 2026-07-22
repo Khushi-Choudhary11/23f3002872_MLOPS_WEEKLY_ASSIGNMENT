@@ -2,10 +2,10 @@
 IRIS inference pipeline (two-bucket setup).
 
 Flow:
-  1. Download model.joblib + eval.csv from a chosen timestamp folder
-     in the ARTIFACTS bucket.
-  2. Run predictions on the eval set.
-  3. Write predictions.csv back into the same folder.
+1. Download eval.csv from the ARTIFACTS bucket.
+2. Load the latest registered model from the MLflow Model Registry.
+3. Run inference using Feast Online Store.
+4. Upload predictions.csv to the ARTIFACTS bucket.
 
 Usage:
   python infer.py --artifact-bucket iris-artifacts-23f3002872 \
@@ -15,7 +15,7 @@ Usage:
 import argparse
 import os
 import tempfile
-
+import mlflow
 import joblib
 import pandas as pd
 from feast import FeatureStore
@@ -44,13 +44,14 @@ def main():
     local_dir = tempfile.mkdtemp()
 
     # ---- 1. Fetch model + eval set from the ARTIFACTS bucket ----
-    model_local = os.path.join(local_dir, "model.joblib")
+    mlflow.set_tracking_uri("sqlite:///mlflow.db")
     eval_local = os.path.join(local_dir, "eval.csv")
-    bucket.blob(f"{args.artifact_prefix}/model.joblib").download_to_filename(model_local)
     bucket.blob(f"{args.artifact_prefix}/eval.csv").download_to_filename(eval_local)
-    print(f"Fetched model from gs://{args.artifact_bucket}/{args.artifact_prefix}/")
+    print("Loading registered model from MLflow Model Registry...")
 
-    model = joblib.load(model_local)
+    model = mlflow.pyfunc.load_model(
+        "models:/iris_classifier/latest"
+    )
     eval_df = pd.read_csv(eval_local)
     store = FeatureStore(repo_path="feast_repo/feature_repo")
     print("Connected to Feast Feature Store")
