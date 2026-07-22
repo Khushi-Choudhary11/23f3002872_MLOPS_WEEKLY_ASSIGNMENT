@@ -4,6 +4,9 @@ pandas>=2.3
 scikit-learn>=1.9
 joblib>=1.5
 
+# MLflow
+mlflow>=2.22.2
+
 # Google Cloud
 google-cloud-storage
 gcsfs

@@ -3,15 +3,14 @@ name: IRIS CI Pipeline
 on:
   push:
     branches:
-      - '**'
+      - "**"
 
   pull_request:
     branches:
-      - '**'
+      - "**"
 
 jobs:
   test:
-
     runs-on: ubuntu-latest
 
     permissions:
@@ -19,7 +18,6 @@ jobs:
       pull-requests: write
 
     steps:
-
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -45,11 +43,29 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Pull DVC Data
         run: |
           dvc pull
+
+      - name: Configure MLflow
+        run: |
+          echo "MLFLOW_TRACKING_URI=sqlite:///mlflow.db" >> $GITHUB_ENV
+
+      - name: Verify MLflow Model Registry
+        run: |
+          python - <<EOF
+          import mlflow
+
+          mlflow.set_tracking_uri("sqlite:///mlflow.db")
+
+          model = mlflow.pyfunc.load_model(
+              "models:/iris_classifier/latest"
+          )
+
+          print("Successfully loaded model from MLflow Model Registry")
+          EOF
 
       - name: Run Tests
         run: |
