@@ -1,61 +1,62 @@
-# IRIS ML Pipeline with Feast, DVC & GitHub Actions CI — Week 4 MLOps Assignment
+# Week 5 - MLflow Integration for IRIS ML Pipeline
 
-## Demo Video
+## Overview
 
-https://drive.google.com/drive/folders/1jaPKTEQNTdIMncwfoCD7LT8j0xLJR3nD?usp=sharing
+This week's assignment extends the IRIS machine learning pipeline by integrating **MLflow** for experiment tracking and model management.
 
----
+The pipeline performs hyperparameter tuning, logs experiments to MLflow, registers trained models in the MLflow Model Registry, and modifies the inference pipeline to fetch the latest registered model instead of relying on locally stored model artifacts.
 
-# Overview
-
-This repository implements a complete end-to-end MLOps pipeline for the IRIS classification problem on **Google Cloud Platform**.
-
-The project evolved over multiple assignments:
-
-- **Week 1:** Built a cloud-based ML training pipeline on Vertex AI and Google Cloud Storage.
-- **Week 2:** Added **DVC** for version-controlled datasets and model artifacts.
-- **Week 3:** Integrated **Feast Feature Store** to eliminate training-serving skew using offline and online feature stores.
-- **Week 4:** Added **Continuous Integration (CI)** using **GitHub Actions**, automated testing with **pytest**, DVC data retrieval, and **CML** reporting for pull requests.
-
-Every push and pull request automatically validates the ML pipeline before code is merged.
+The implementation was completed on **Google Cloud Platform (Vertex AI Workbench)** using **Google Cloud Storage**, **Feast Feature Store**, **MLflow**, **DVC**, and **GitHub Actions**.
 
 ---
 
-# Architecture
+# Objectives
 
-```text
-                        GitHub Repository
-                               │
-                     Push / Pull Request
-                               │
-                               ▼
-                     GitHub Actions CI
-                               │
-        ┌──────────────────────┼──────────────────────┐
-        │                      │                      │
-        ▼                      ▼                      ▼
- Authenticate to GCP      DVC Pull              Install Dependencies
-        │                      │                      │
-        └──────────────┬───────┴──────────────────────┘
-                       ▼
-                  Run pytest Tests
-                       │
-        ┌──────────────┴───────────────┐
-        │                              │
-        ▼                              ▼
- Data Validation Tests         Model Evaluation Tests
-        │                              │
-        └──────────────┬───────────────┘
-                       ▼
-               Generate Test Report
-                       │
-                       ▼
-               Publish using CML
+- Integrate MLflow into the training pipeline
+- Perform hyperparameter tuning
+- Log parameters, metrics, and trained models
+- Register models using MLflow Model Registry
+- Remove model dependency from DVC
+- Load registered models during inference
+- Update CI workflow for MLflow integration
+
+---
+
+# Project Structure
+
+```
+.
+├── data/
+├── feast_repo/
+├── tests/
+├── .github/workflows/
+│   └── ci.yml
+├── train.py
+├── infer.py
+├── requirements.txt
+├── mlflow.db
+├── mlruns/
+└── README.md
 ```
 
 ---
 
-# Google Cloud Resources
+# Technologies Used
+
+- Python 3.12
+- MLflow
+- Feast Feature Store
+- Google Cloud Storage
+- Vertex AI Workbench
+- DVC
+- GitHub Actions
+- Scikit-learn
+- Pandas
+- NumPy
+
+---
+
+# Google Cloud Storage Buckets
 
 ## Data Bucket
 
@@ -63,7 +64,10 @@ Every push and pull request automatically validates the ML pipeline before code 
 gs://iris-data-23f3002872
 ```
 
-Stores versioned IRIS datasets.
+Stores:
+
+- Raw dataset
+- Versioned datasets
 
 ---
 
@@ -75,405 +79,196 @@ gs://iris-artifacts-23f3002872
 
 Stores:
 
-- trained models
-- evaluation metrics
-- predictions
-- evaluation dataset
-- logs
+- metrics.json
+- eval.csv
+- predictions.csv
+- train.log
 
 ---
 
-## DVC Remote
+# MLflow Integration
+
+The training pipeline uses MLflow for:
+
+- Experiment Tracking
+- Hyperparameter Logging
+- Metric Logging
+- Model Logging
+- Model Registry
+
+Tracking URI:
+
+```python
+mlflow.set_tracking_uri("sqlite:///mlflow.db")
+```
+
+Experiment Name
 
 ```
-gs://iris-dvc-23f3002872
+IRIS_Experiment
 ```
 
-Stores version-controlled datasets and models.
-
----
-
-## Feast Repository
+Registered Model
 
 ```
-feast_repo/
-```
-
-Contains:
-
-- feature_store.yaml
-- feature_definitions.py
-- registry
-- SQLite online store
-- offline feature metadata
-
----
-
-# Repository Structure
-
-```text
-.
-├── .github
-│   └── workflows
-│       └── ci.yml
-│
-├── data
-│   ├── raw
-│   ├── v1
-│   └── v2
-│
-├── feast_repo
-│   └── feature_repo
-│
-├── models
-│
-├── tests
-│   ├── test_data.py
-│   └── test_model.py
-│
-├── train.py
-├── infer.py
-├── requirements.txt
-└── README.md
+iris_classifier
 ```
 
 ---
 
-# Dataset
+# Hyperparameter Tuning
 
-The IRIS dataset contains:
+Three different configurations are evaluated.
 
-### Features
+| Run | Max Depth | Criterion |
+|------|-----------|-----------|
+| 1 | 2 | gini |
+| 2 | 3 | entropy |
+| 3 | 5 | gini |
 
-- sepal_length
-- sepal_width
-- petal_length
-- petal_width
-
-### Target
-
-- species
-
-### Feast Metadata
-
-- iris_id
-- event_timestamp
+Each configuration creates a separate MLflow run.
 
 ---
 
-# Feast Integration
+# Logged Parameters
 
-## Entity
-
-```
-iris_id
-```
-
----
-
-## Feature View
-
-```
-iris_features
-```
-
-Contains
-
-- sepal_length
-- sepal_width
-- petal_length
-- petal_width
+- max_depth
+- criterion
+- test_size
+- data_version
 
 ---
 
-## Offline Store
+# Logged Metrics
 
-Used during training using
-
-```
-get_historical_features()
-```
-
----
-
-## Online Store
-
-SQLite Online Store
-
-Used during inference using
-
-```
-get_online_features()
-```
+- Accuracy
+- Precision
+- Recall
+- F1 Score
 
 ---
 
-# Continuous Integration (Week 4)
+# Model Registry
 
-GitHub Actions automatically executes the CI pipeline whenever code is pushed or a Pull Request is opened.
-
-Workflow includes:
-
-- Repository checkout
-- Python setup
-- Dependency installation
-- Google Cloud authentication
-- DVC data retrieval
-- Data validation tests
-- Model evaluation tests
-- Test report generation
-- CML report publishing on Pull Requests
-
----
-
-# Data Validation Tests
-
-Implemented using **pytest**.
-
-Tests verify:
-
-- Dataset exists
-- Expected schema
-- No missing values
-- Correct numeric feature types
-- Reasonable feature value ranges
+Every trained model is registered automatically in the MLflow Model Registry.
 
 Example:
 
-```bash
-pytest tests/test_data.py
+```
+iris_classifier
+
+Version 1
+Version 2
+Version 3
+Version 4
+Version 5
+Version 6
 ```
 
 ---
 
-# Model Evaluation Tests
+# Training Pipeline
 
-Tests verify:
+The training pipeline performs the following steps:
 
-- Model file exists
-- Model loads successfully
-- Accuracy exceeds threshold
-- Precision exceeds threshold
+1. Download dataset from Google Cloud Storage.
+2. Retrieve historical features from Feast.
+3. Split the dataset into train and test sets.
+4. Perform hyperparameter tuning.
+5. Train Decision Tree models.
+6. Log parameters and metrics to MLflow.
+7. Register trained models.
+8. Upload metrics, evaluation dataset, and logs to GCS.
 
-Example:
-
-```bash
-pytest tests/test_model.py
-```
-
----
-
-# GitHub Actions Workflow
-
-Location
-
-```
-.github/workflows/ci.yml
-```
-
-The workflow automatically:
-
-- Checks out the repository
-- Installs dependencies
-- Authenticates with Google Cloud
-- Executes
-
-```
-dvc pull
-```
-
-- Runs
-
-```
-pytest
-```
-
-- Generates a CI report
-- Publishes results through CML
-
-Workflow triggers:
-
-- Push
-- Pull Request
-
----
-
-# DVC Integration
-
-Version-controlled artifacts include
-
-```
-data/raw/iris.csv
-models/model.joblib
-```
-
-Retrieve versioned data using
-
-```bash
-dvc pull
-```
-
-Upload new versions using
-
-```bash
-dvc push
-```
-
----
-
-# Training
+Run:
 
 ```bash
 python train.py \
---data-bucket iris-data-23f3002872 \
---artifact-bucket iris-artifacts-23f3002872 \
---data-version raw
+  --data-bucket iris-data-23f3002872 \
+  --artifact-bucket iris-artifacts-23f3002872 \
+  --data-version raw
 ```
 
 ---
 
-# Inference
+# Inference Pipeline
+
+The inference pipeline performs:
+
+1. Download evaluation dataset from GCS.
+2. Load the latest model from MLflow Model Registry.
+3. Retrieve online features from Feast.
+4. Generate predictions.
+5. Upload predictions.csv to GCS.
+
+Run:
 
 ```bash
 python infer.py \
---artifact-bucket iris-artifacts-23f3002872 \
---artifact-prefix artifacts/<timestamp>
+  --artifact-bucket iris-artifacts-23f3002872 \
+  --artifact-prefix artifacts/<timestamp>
 ```
 
 ---
 
-# Assignment Tasks
+# MLflow Tracking UI
 
-## Task 1
+Launch the MLflow UI:
 
-Implemented automated data validation tests using pytest.
+```bash
+mlflow ui \
+  --backend-store-uri sqlite:///mlflow.db \
+  --default-artifact-root ./mlruns \
+  --host 0.0.0.0 \
+  --port 5001
+```
 
-**Completed ✓**
+The UI provides:
 
----
-
-## Task 2
-
-Implemented automated model evaluation tests.
-
-**Completed ✓**
-
----
-
-## Task 3
-
-Configured GitHub Actions to:
-
-- install dependencies
-- authenticate to GCP
-- execute DVC pull
-- run pytest
-
-**Completed ✓**
+- Experiment comparison
+- Parameter visualization
+- Metric visualization
+- Model Registry
+- Registered model versions
 
 ---
 
-## Task 4
+# GitHub Actions
 
-Enabled CI execution on
+The CI workflow performs:
 
-- Push
-- Pull Request
-
-**Completed ✓**
-
----
-
-## Task 5
-
-Integrated CML to generate automated CI reports for Pull Requests.
-
-**Completed ✓**
+- Checkout repository
+- Install dependencies
+- Authenticate to Google Cloud
+- Pull versioned data using DVC
+- Configure MLflow
+- Verify Model Registry
+- Execute test suite
+- Publish CML report
 
 ---
 
-## Task 6
+# Assignment Tasks Completed
 
-Merged Week 4 implementation into the main branch through Pull Request after successful CI validation.
-
-**Completed ✓**
-
----
-
-# Results
-
-## Data Validation
-
-✔ Dataset found
-
-✔ Schema verified
-
-✔ No missing values
-
-✔ Valid feature ranges
-
----
-
-## Model Validation
-
-✔ Model loaded successfully
-
-✔ Accuracy threshold satisfied
-
-✔ Precision threshold satisfied
-
----
-
-## CI Results
-
-✔ GitHub Actions passed
-
-✔ DVC Pull successful
-
-✔ pytest passed
-
-✔ Automated CI report generated
-
----
-
-# Technologies Used
-
-- Python
-- scikit-learn
-- pandas
-- pytest
-- DVC
-- Feast
-- GitHub Actions
-- CML
-- Google Cloud Platform
-- Vertex AI Workbench
-- Google Cloud Storage
-- SQLite
-- BigQuery
-- Git
+| Task | Status |
+|-------|--------|
+| Hyperparameter Tuning | ✅ |
+| MLflow Experiment Tracking | ✅ |
+| Experiment Comparison | ✅ |
+| Remove Model Dependency from DVC | ✅ |
+| Fetch Models from MLflow Registry | ✅ |
+| MLflow Integration in CI (Optional) | ✅ |
 
 ---
 
 # Learning Outcomes
 
-This assignment demonstrates:
-
-- Continuous Integration for ML pipelines
-- Automated testing using pytest
-- GitHub Actions workflow creation
-- DVC integration inside CI
-- Secure authentication using GitHub Secrets
-- Continuous Machine Learning (CML)
-- Feature Store integration with Feast
-- End-to-end reproducible MLOps pipeline
+Through this assignment I learned how MLflow complements DVC by providing experiment tracking, model versioning, and centralized model management. I also gained practical experience integrating MLflow with Feast, Google Cloud Storage, Vertex AI Workbench, and GitHub Actions to build a complete MLOps workflow.
 
 ---
 
-# Author
+## Author
 
-**Khushi Choudhary**
+**Name:** Khushi Choudhary
 
-**Roll Number:** 23f3002872
-
-**IIT Madras BS Degree Programme**
+**IIT Madras BS Roll Number:** 23f3002872
