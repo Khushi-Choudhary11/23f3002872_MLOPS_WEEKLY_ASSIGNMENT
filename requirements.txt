@@ -24,3 +24,6 @@ pytest
 # Utilities
 PyYAML
 requests
+
+fastapi
+uvicorn[standard]
