@@ -30,12 +30,12 @@ jobs:
          credentials_json: ${{ secrets.GCP_SA_KEY }}
          create_credentials_file: true
          export_environment_variables: true
-     
+
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
-      
+
       - name: Verify authenticated account
         run: |
           gcloud auth list
@@ -51,6 +51,14 @@ jobs:
       - name: Push Docker Image
         run: |
           docker push $GAR_LOCATION-docker.pkg.dev/$PROJECT_ID/$GAR_REPOSITORY/$IMAGE:${{ github.sha }}
+
+      - name: Debug variables
+        run: |
+          echo "PROJECT_ID=$PROJECT_ID"
+          echo "GAR_LOCATION=$GAR_LOCATION"
+          echo "GAR_REPOSITORY=$GAR_REPOSITORY"
+          echo "GKE_CLUSTER=$GKE_CLUSTER"
+          echo "GKE_REGION=$GKE_REGION"
 
       - name: Get GKE Credentials
         uses: google-github-actions/get-gke-credentials@v2
