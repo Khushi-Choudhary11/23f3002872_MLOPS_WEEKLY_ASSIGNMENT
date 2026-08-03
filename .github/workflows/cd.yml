@@ -90,4 +90,7 @@ jobs:
           done
       - name: Run Stress Test (wrk)
         run: |
-          wrk -t4 -c1000 -d30s -s post.lua http://${{ steps.getip.outputs.ip }}/predict
+          IP="${{ steps.getip.outputs.ip }}"
+          echo "Verifying connectivity right before wrk..."
+          curl -v http://$IP:80/health
+          wrk -t4 -c1000 -d30s -s post.lua http://$IP:80/predict
