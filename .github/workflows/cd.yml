@@ -76,6 +76,18 @@ jobs:
             sleep 10
           done
           echo "ip=$IP" >> "$GITHUB_OUTPUT"
+      - name: Wait for API readiness
+        run: |
+          IP="${{ steps.getip.outputs.ip }}"
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://$IP/health || echo "000")
+            if [ "$STATUS" == "200" ]; then
+              echo "API is healthy"
+              break
+            fi
+            echo "Waiting for API... status=$STATUS"
+            sleep 5
+          done
       - name: Run Stress Test (wrk)
         run: |
           wrk -t4 -c1000 -d30s -s post.lua http://${{ steps.getip.outputs.ip }}/predict
