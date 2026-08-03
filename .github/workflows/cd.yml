@@ -3,7 +3,7 @@ name: Build and Deploy to GKE
 on:
   push:
     branches:
-      - week_6
+      - week_7
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT }}
@@ -61,3 +61,21 @@ jobs:
       - name: Verify Rollout
         run: |
           kubectl rollout status deployment/iris-api
+      - name: Install wrk
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wrk
+      - name: Get External IP
+        id: getip
+        run: |
+          IP=""
+          for i in $(seq 1 30); do
+            IP=$(kubectl get svc iris-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            if [ -n "$IP" ]; then break; fi
+            echo "Waiting for external IP..."
+            sleep 10
+          done
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+      - name: Run Stress Test (wrk)
+        run: |
+          wrk -t4 -c1000 -d30s -s post.lua http://${{ steps.getip.outputs.ip }}/predict
