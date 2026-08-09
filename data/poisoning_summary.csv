@@ -1,0 +1,5 @@
+poisoning_level,n_train_total,n_poisoned,actual_pct,file
+0,90,0,0.0,data/clean/train_0pct.csv
+5,90,5,5.56,data/poisoned/train_5pct.csv
+10,90,9,10.0,data/poisoned/train_10pct.csv
+50,90,45,50.0,data/poisoned/train_50pct.csv
