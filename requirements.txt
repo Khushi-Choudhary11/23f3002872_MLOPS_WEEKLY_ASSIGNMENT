@@ -27,3 +27,9 @@ requests
 
 fastapi
 uvicorn[standard]
+
+# Explainability, Fairness, Drift (Week 9)
+shap
+fairlearn
+scipy
+matplotlib
