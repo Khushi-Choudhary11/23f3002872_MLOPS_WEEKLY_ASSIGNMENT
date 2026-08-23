@@ -1,0 +1,20 @@
+{
+  "v1": {
+    "resource_name": "projects/228573491400/locations/us-central1/tuningJobs/4135243586885124096",
+    "source_model": "gemini-2.5-flash",
+    "epochs": 5,
+    "learning_rate_multiplier": 1.0,
+    "state": "JOB_STATE_SUCCEEDED",
+    "tuned_model_endpoint_name": "projects/228573491400/locations/us-central1/endpoints/6566077282648064000",
+    "tuned_model_name": "projects/228573491400/locations/us-central1/models/7389264046177910784@1"
+  },
+  "v2": {
+    "resource_name": "projects/228573491400/locations/us-central1/tuningJobs/1457853608413364224",
+    "source_model": "gemini-2.5-flash",
+    "epochs": 5,
+    "learning_rate_multiplier": 1.0,
+    "state": "JOB_STATE_SUCCEEDED",
+    "tuned_model_endpoint_name": "projects/228573491400/locations/us-central1/endpoints/6489938301447831552",
+    "tuned_model_name": "projects/228573491400/locations/us-central1/models/5816381876318765056@1"
+  }
+}

@@ -1,13 +1,13 @@
-# Week 9 – Explainability, Fairness, and Drift in the IRIS Pipeline
+# Week 10 – From MLOps to LLMOps: Fine-Tuning Gemini on the IRIS Pipeline
 
 **Name:** Khushi Choudhary
 **IITM BS Roll Number:** 23f3002872
 **Repository:** 23f3002872_MLOPS_WEEKLY_ASSIGNMENT
-**Branch:** week_9
+**Branch:** week_10
 
 ## Objective
 
-Move beyond securing the pipeline (Week 8) to making it *trustworthy*: introduce a synthetic sensitive attribute (`location`) into the IRIS dataset, audit the trained classifier for bias across that attribute with **Fairlearn**, explain individual predictions with **SHAP**, detect **data drift** between training and a simulated production batch, and document accountability with a **model card**.
+Move from classical MLOps (own the training code, fit the model, version the artifact) to **LLMOps** (adapt a pretrained foundation model, version prompts + fine-tuning data + adapters, evaluate for format compliance as well as accuracy). Convert the IRIS dataset into two JSONL fine-tuning representations — raw feature values (v1) and natural-language descriptions (v2) — supervised-fine-tune `gemini-2.5-flash` on each via Vertex AI, then compare accuracy, per-class precision/recall, and output-format compliance to see whether the data representation changes how well an LLM performs a task a traditional classifier already solves easily.
 
 ## Pipeline / Architecture
 
@@ -15,139 +15,137 @@ Move beyond securing the pipeline (Week 8) to making it *trustworthy*: introduce
 data/raw/iris.csv (clean, DVC-tracked, unchanged)
         |
         v
-fairness_data.py                                    (Task 1)
-  - adds `location` in {0,1}, assigned uniformly at random,
-    independent of every feature and of the label
-  - stratified 60/40 train/test split (random_state=42),
-    `location` carried through the split but NEVER used as
-    a training feature
-  - trains DecisionTreeClassifier(max_depth=3, criterion=gini)
-    on the 4 original features only
-  - logs params/metrics/model to MLflow experiment
-    "IRIS_Fairness_Explainability" (sqlite:///mlflow.db)
-  - saves model -> models/week9_model.joblib
-  - saves test predictions + location -> data/week9/test_predictions.csv
+prepare_llm_data.py                                  (Tasks 1 & 2)
+  - stratified 60/20/20 split (90 train / 30 val / 30 test,
+    30/10/10 per class, random_state=42)
+  - v1 (raw):         input_text = "sepal_length: 5.1, sepal_width: 3.5, ..."
+                       output_text = "setosa"
+  - v2 (description):  input_text = "A flower specimen has a sepal length
+                       of 5.1 cm, ... Identify the iris species."
+                       output_text = "This is Iris setosa."
+  - also emits a {"contents":[...]} chat-schema copy of train/validation,
+    since Vertex AI's current Gemini SFT API takes that schema rather
+    than the legacy PaLM-era input_text/output_text schema
+  -> data/week10/{v1,v2}_{train,validation,test}.jsonl
+  -> data/week10/{v1,v2}_{train,validation}_gemini.jsonl
         |
-        +--> fairness_analysis.py                    (Task 2)
-        |      - Fairlearn MetricFrame(accuracy/precision/recall,
-        |        sensitive_features=location) on test predictions
-        |      - data/week9/fairlearn_metrics.csv, fairlearn_disparity.csv
+        v
+upload_llm_data.py                                    (Tasks 1 & 2)
+  - uploads all 10 files to gs://iris-data-23f3002872/week10/
         |
-        +--> shap_analysis.py                         (Task 3)
-        |      - shap.TreeExplainer over the full 150-row dataset
-        |        (4 real features only, `location` excluded)
-        |      - beeswarm summary plot per class (setosa/versicolor/virginica)
-        |      - data/week9/shap_summary_{class}.png
+        v
+finetune_vertex.py                                    (Task 3)
+  - vertexai.tuning.sft.train() x2, source_model="gemini-2.5-flash",
+    epochs=5, learning_rate_multiplier=1.0 (identical for both jobs —
+    data representation is the only variable)
+  -> data/week10/tuning_jobs.json (job + endpoint resource names)
         |
-        +--> drift_detection.py                       (Task 4)
-               - simulates a production batch: petal_length +1.5 offset,
-                 petal_width x1.5 scale, sepal_* small Gaussian noise only
-               - two-sample Kolmogorov-Smirnov test per feature vs. training
-               - data/week9/drift_test_results.csv, drift_distributions.png
+        v
+evaluate_llm.py                                       (Task 4)
+  - calls both tuned endpoints against their held-out 30-row test set
+  - thinking disabled (thinking_budget=0) + version-specific system
+    instruction, so the model's answer tokens aren't consumed by its
+    internal reasoning pass
+  - accuracy, per-class precision/recall (sklearn), format compliance
+    (exact-format regex match), non-compliant/unparseable outputs
+    scored as an incorrect "invalid" prediction, not dropped
+  -> data/week10/evaluation_results.json, data/week10/llm_comparison.png
 
-data/week9/model_card.md                              (Task 5, optional)
-  - purpose, training data, by-group performance, limitations, fairness
+.github/workflows/llmops-eval.yml                      (Task 5, optional)
+  - re-runs evaluate_llm.py on every push to week_10, fails the job if
+    either version's accuracy drops below 0.8
 ```
 
-## Task 1 — Introduce the `location` Attribute
+## Task 1 & 2 — Prepare v1 (Raw) and v2 (Description) JSONL
 
-`fairness_data.py` adds `location` (0/1) to every row via `numpy.random.RandomState(42).randint(0, 2, ...)` — independent of `sepal_*`, `petal_*`, and `species`. The full frame (features + `species` + `location`) is split together (`stratify=species`) so `location` stays attached to each row through the split, but only the 4 original features (`sepal_length`, `sepal_width`, `petal_length`, `petal_width`) are passed to `DecisionTreeClassifier.fit()`. `location` is carried forward purely as a group label for the Task 2 audit — never as a model input.
+`prepare_llm_data.py` reads `data/raw/iris.csv` (150 rows, balanced 50/class) and performs one stratified 60/20/20 split (train/validation/test), reused identically for both representations so v1 and v2 see the exact same rows in the exact same roles — the only difference between the two experiments is how each row is *phrased*, not which rows are used.
 
-**Why exclude it from training:** it was assigned at random, so it has zero true relationship with the label; feeding it in would only add noise to the split criterion. This mirrors a real deployment pattern — a protected attribute is often withheld from the feature set, but its absence from training does **not** by itself guarantee the model behaves equitably across groups, which is exactly what Task 2 checks.
+- **v1 (raw):** `{"input_text": "sepal_length: 5.1, sepal_width: 3.5, petal_length: 1.4, petal_width: 0.2", "output_text": "setosa"}`
+- **v2 (description):** `{"input_text": "A flower specimen has a sepal length of 5.1 cm, sepal width of 3.5 cm, petal length of 1.4 cm, and petal width of 0.2 cm. Identify the iris species.", "output_text": "This is Iris setosa."}`
 
-Output: `data/week9/iris_with_location.csv` (150 rows, location roughly balanced 0/1); model saved to `models/week9_model.joblib`; run logged under MLflow experiment `IRIS_Fairness_Explainability`.
+**Why a second `_gemini.jsonl` copy exists:** the assignment spec's `input_text`/`output_text` schema is the older Vertex AI (PaLM/text-bison) tuning format. The current Gemini supervised-tuning API instead consumes the same chat `contents`/`role`/`parts` schema as the Gemini API itself. `prepare_llm_data.py` keeps the `input_text`/`output_text` files as the primary deliverable (and what evaluation scores against), and mechanically derives a `{"contents": [...]}` copy of the train/validation splits purely to satisfy what Vertex AI's `tuningJobs.create` actually accepts today.
 
-## Task 2 — Assess Fairness with Fairlearn
+Uploaded to `gs://iris-data-23f3002872/week10/`.
 
-`fairness_analysis.py` loads `data/week9/test_predictions.csv` (y_true, y_pred, and `location` for each of the 60 test rows) and runs a Fairlearn `MetricFrame` with `sensitive_features=location`.
+## Task 3 — Fine-Tune Two Gemini Model Versions
 
-**Overall (n=60):** accuracy 0.983, precision (macro) 0.984, recall (macro) 0.983.
+`finetune_vertex.py` submits two `vertexai.tuning.sft.train()` jobs against `gemini-2.5-flash` (Vertex AI's current cost-efficient Gemini tier — `gemini-2.0-flash-001` was shut down 2026-06-01), both with `epochs=5`, `learning_rate_multiplier=1.0`:
 
-**By `location` group** (`data/week9/fairlearn_metrics.csv`):
+| version | tuning job | tuned model / endpoint |
+|---|---|---|
+| v1 (raw) | `tuningJobs/4135243586885124096` | `endpoints/6566077282648064000` |
+| v2 (description) | `tuningJobs/1457853608413364224` | `endpoints/6489938301447831552` |
 
-| location | n | accuracy | precision | recall |
-|---|---|---|---|---|
-| 0 | 29 | 1.000 | 1.000 | 1.000 |
-| 1 | 31 | 0.968 | 0.963 | 0.970 |
+Both jobs reached `JOB_STATE_SUCCEEDED`. Job configuration, state, and resulting endpoint/model resource names are recorded in `data/week10/tuning_jobs.json`. Both jobs are visible under **Vertex AI → Tuning** in the console (see screencast).
 
-**Disparity** (`data/week9/fairlearn_disparity.csv`): difference (max−min) ≈ 0.030–0.037; ratio (min/max) ≈ 0.963–0.970 across all three metrics.
+## Task 4 — Evaluate & Compare v1 vs v2
 
-**Interpretation:** the two groups perform near-identically, as expected — `location` was assigned independently of the features and label, so any gap is sampling noise from the small (60-row) test set (2 misclassified rows happened to fall in group 1), not a real disparity. This confirms the audit workflow is sound: `MetricFrame` surfaces a gap when one exists, it does not by itself distinguish "real bias" from "noise," which is why the near-zero, near-random-assignment baseline here is the right sanity check before trusting the metric on a real sensitive attribute.
+`evaluate_llm.py` calls each tuned endpoint against its own 30-row held-out test set (10/class), with `thinking_budget=0` (`gemini-2.5-flash` is a "thinking" model — its `max_output_tokens` budget covers thinking tokens *and* answer tokens together, and an ungated thinking pass alone can burn the whole budget before any answer text is emitted, which is exactly what happened in the first evaluation run: 0% accuracy, every response an empty/`MAX_TOKENS`-truncated candidate) and a version-specific system instruction matching each version's own output template (a shared "be terse" instruction was tried first and it pulled v2's fine-tuned model away from its trained full-sentence style toward v1's style, which would have silently confounded the comparison this task is designed to make).
 
-## Task 3 — SHAP Summary Plots and Explaining Virginica
+**Results (n=30 per version, 10/class):**
 
-`shap_analysis.py` builds one `shap.TreeExplainer` over the full 150-sample dataset (exact SHAP values for a decision tree) and produces a beeswarm summary plot per class: `data/week9/shap_summary_setosa.png`, `shap_summary_versicolor.png`, `shap_summary_virginica.png`.
+| metric | v1 (raw) | v2 (description) |
+|---|---|---|
+| accuracy | **0.967** (29/30) | 0.900 (27/30) |
+| format compliance | 1.000 | 1.000 |
+| precision — setosa | 1.000 | 1.000 |
+| recall — setosa | 1.000 | 1.000 |
+| precision — versicolor | 0.909 | 0.769 |
+| recall — versicolor | 1.000 | 1.000 |
+| precision — virginica | 1.000 | 1.000 |
+| recall — virginica | 0.900 | 0.700 |
 
-Mean |SHAP| per feature, class = virginica: `petal_length` 0.336, `petal_width` 0.109, `sepal_width`/`sepal_length` ≈ 0.
+`data/week10/llm_comparison.png` plots accuracy and format compliance side by side. Full per-row predictions are in `data/week10/evaluation_results.json`.
 
-**Plain-language reading of the virginica plot:**
-- **Pushes toward virginica:** high `petal_length` and high `petal_width` (red dots clustered on the positive/right side, SHAP ≈ +0.13 to +0.55). Large petals are the model's strongest evidence for virginica.
-- **Pushes away from virginica:** low `petal_length` and low `petal_width` (blue dots clustered on the negative/left side, SHAP ≈ −0.25 to −0.30). Small petals strongly argue against virginica (these are the setosa/versicolor samples).
-- **Right vs. left side:** the x-axis is the SHAP value for that sample-feature pair. Right of zero means that feature's actual value increased the model's confidence in virginica for that sample; left of zero means it decreased it.
-- **Dot color:** red = the feature's value was high for that sample, blue = it was low, for that feature's own range. So "a red cluster on the right" (seen here for both petal features) means *high values of that feature are strong, consistent evidence for virginica* — the classic signature of a genuinely discriminative feature.
-- `sepal_length`/`sepal_width` sit essentially on the zero line for every sample — the tree (max_depth=3) never actually splits on them for this class, so they carry no explanatory weight for virginica.
+**Which version performs better, and why:** v1 (raw feature values) beats v2 (natural-language description) on accuracy (96.7% vs 90.0%) and on every class's precision/recall except identical setosa/versicolor-recall ties. Every single error in both versions is the same failure mode — a virginica sample misclassified as versicolor — which is the textbook IRIS boundary case (virginica and versicolor overlap in petal measurements at the low end of virginica's range); v2 just makes that boundary error 3 times instead of v1's 1. The likely reason: v1's `sepal_length: 5.1, sepal_width: 3.5, ...` format keeps the four numeric feature values in a fixed, minimal, consistently-ordered position relative to their labels — closer to a structured key-value record than to prose — while v2 embeds the same four numbers inside a longer natural-language sentence, adding more tokens (units, filler words, sentence structure) between the model and the numeric signal it actually needs to threshold on. For a task that is *purely numeric-threshold classification* with no ambiguity or world knowledge for the LLM to exploit, the extra natural-language scaffolding in v2 is pure overhead rather than a help — it doesn't give the model anything to reason about that the raw numbers didn't already convey, and on 90 training examples (30/class) that overhead measurably costs accuracy at the decision boundary. **Format compliance was a perfect 1.000 for both** once thinking was disabled and each version was prompted with its own matching system instruction, so on this task format compliance itself doesn't distinguish the two representations — the accuracy gap is the real signal, and it favors raw structured input over natural-language description for a task this numeric.
 
-## Task 4 — Detect Data Drift
+## Task 5 (Optional) — Automated Evaluation Gate in CI
 
-`drift_detection.py` simulates a production batch by shifting two of the four feature distributions and leaving the other two as near-identical (small-noise) controls:
-
-- `petal_length`: **+1.5 constant offset** (e.g., a later growth stage or sensor recalibration) → mean shifts, shape unchanged.
-- `petal_width`: **×1.5 multiplicative scale** (e.g., a unit/instrument change) → both mean and spread shift.
-- `sepal_length`, `sepal_width`: small Gaussian measurement noise only (σ=0.05) → no systematic change.
-
-Each reference-vs-production feature pair is compared with a two-sample **Kolmogorov–Smirnov** test (α=0.05) — a distribution-only, model-free way to detect *data* drift:
-
-| feature | ks_statistic | p-value | drifted? |
-|---|---|---|---|
-| sepal_length | 0.053 | 0.984 | No |
-| sepal_width | 0.100 | 0.443 | No |
-| petal_length | 0.413 | 7.4e-12 | **Yes** |
-| petal_width | 0.373 | 1.1e-09 | **Yes** |
-
-Distribution overlays: `data/week9/drift_distributions.png`. Full results: `data/week9/drift_test_results.csv`.
-
-**What this means for the deployed model:** `petal_length` and `petal_width` are exactly the two features the Task 3 SHAP analysis showed the model relies on almost entirely (combined mean |SHAP| ≫ the sepal features, for every class). A production stream whose petal measurements are shifted this far outside the training range would push samples into regions of feature space the `max_depth=3` decision boundaries were never fit against — accuracy on this stream cannot be assumed to match the reported test accuracy. This test only confirms **data drift** (the *input* distributions changed); it says nothing about whether the input→output relationship itself changed (**concept drift**), which would require scoring the model's predictions against ground-truth labels collected from production — statistical distribution tests alone cannot detect that.
-
-## Task 5 (Optional) — Model Card
-
-A structured model card covering intended use, training data, overall and by-group performance, SHAP-based explainability summary, drift findings, limitations, and fairness considerations is at [`data/week9/model_card.md`](data/week9/model_card.md).
+`.github/workflows/llmops-eval.yml` reruns `evaluate_llm.py --fail-below 0.8` on every push to `week_10`, using the same `GCP_SA_KEY` secret already configured for `ci.yml`/`cd.yml`. It calls both live tuned endpoints (resource names come from the committed `data/week10/tuning_jobs.json`) and fails the job — acting as a regression guard — if either version's accuracy on the same held-out test set drops below 0.8. Results are uploaded as a workflow artifact (`evaluation_results.json`, `llm_comparison.png`) on every run, pass or fail.
 
 ---
 
 ## GCP Resources Used
 
-No new GCP resources were required for this assignment — Tasks 1–5 run entirely on locally/DVC-tracked data (`data/raw/iris.csv`) and log to the existing local MLflow store (`mlflow.db`). No BigQuery, Feast, GKE, or Artifact Registry changes were made this week.
+- **Vertex AI Supervised Fine-Tuning:** two live tuning jobs against `gemini-2.5-flash` in `us-central1` (see Task 3 table), each producing a dedicated tuned-model endpoint queried directly in Task 4/5.
+- **Cloud Storage:** `gs://iris-data-23f3002872/week10/` — all 10 JSONL files (train/validation/test x v1/v2, plus the `_gemini.jsonl` chat-schema copies used to submit the jobs).
+- Note: `vertexai.tuning` / `vertexai.generative_models` (the SDK modules used here) are flagged deprecated as of 2025-06-24, scheduled for removal 2026-06-24, in favor of the newer `google-genai` client — still fully functional as of this assignment (Aug 2026) but worth migrating in a future pass.
 
 ## Files Added This Week
 
 ```
-fairness_data.py                     # Task 1: adds `location`, trains baseline model, logs to MLflow
-fairness_analysis.py                 # Task 2: Fairlearn MetricFrame audit by location
-shap_analysis.py                     # Task 3: SHAP beeswarm summaries, all 3 classes
-drift_detection.py                   # Task 4: simulated production drift + KS tests
-data/week9/iris_with_location.csv    # IRIS + location attribute
-data/week9/test_predictions.csv      # test-set y_true/y_pred + location
-data/week9/fairlearn_metrics.csv     # per-group accuracy/precision/recall
-data/week9/fairlearn_disparity.csv   # difference/ratio across groups
-data/week9/shap_summary_setosa.png
-data/week9/shap_summary_versicolor.png
-data/week9/shap_summary_virginica.png
-data/week9/production_simulated.csv  # simulated drifted production batch
-data/week9/drift_test_results.csv    # KS-test results per feature
-data/week9/drift_distributions.png   # reference vs. production distribution overlays
-data/week9/model_card.md             # Task 5: model card
-models/week9_model.joblib            # trained DecisionTreeClassifier
+prepare_llm_data.py                       # Tasks 1 & 2: build v1/v2 JSONL splits
+upload_llm_data.py                        # Tasks 1 & 2: upload JSONL to GCS
+finetune_vertex.py                        # Task 3: submit both Vertex AI SFT jobs
+wait_and_evaluate.py                      # polls both jobs, then runs evaluation
+evaluate_llm.py                           # Task 4: accuracy/precision/recall/compliance
+.github/workflows/llmops-eval.yml         # Task 5: CI regression gate on push to week_10
+data/week10/v1_train.jsonl                # 90 rows, raw feature format
+data/week10/v1_validation.jsonl           # 30 rows
+data/week10/v1_test.jsonl                 # 30 rows (held out, used for evaluation)
+data/week10/v1_train_gemini.jsonl         # v1 train, Gemini "contents" chat schema
+data/week10/v1_validation_gemini.jsonl
+data/week10/v2_train.jsonl                # 90 rows, natural-language description format
+data/week10/v2_validation.jsonl           # 30 rows
+data/week10/v2_test.jsonl                 # 30 rows (held out, used for evaluation)
+data/week10/v2_train_gemini.jsonl         # v2 train, Gemini "contents" chat schema
+data/week10/v2_validation_gemini.jsonl
+data/week10/tuning_jobs.json              # tuning job + tuned endpoint resource names
+data/week10/evaluation_results.json       # full per-row predictions + metrics, both versions
+data/week10/llm_comparison.png            # accuracy / format-compliance bar chart
 ```
-
-MLflow tracking store: `mlflow.db` (sqlite, repo root, shared with prior weeks — experiment `IRIS_Fairness_Explainability` is separate from earlier experiments).
 
 ## How to Reproduce
 
 ```bash
 dvc pull data/raw/iris.csv.dvc
-python3 fairness_data.py        # Task 1: adds location, trains model, logs to MLflow
-python3 fairness_analysis.py    # Task 2: Fairlearn fairness audit
-python3 shap_analysis.py        # Task 3: SHAP summary plots
-python3 drift_detection.py      # Task 4: data drift detection
-mlflow ui --backend-store-uri sqlite:///mlflow.db   # to browse the run
+python3 prepare_llm_data.py             # Tasks 1 & 2: build v1/v2 JSONL splits
+python3 upload_llm_data.py              # Tasks 1 & 2: upload to GCS
+python3 finetune_vertex.py              # Task 3: submit both tuning jobs (async)
+python3 wait_and_evaluate.py            # poll until both jobs finish, then evaluate
+# or, once data/week10/tuning_jobs.json already has both tuned_model_endpoint_name:
+python3 evaluate_llm.py                 # Task 4: score both endpoints, write results + plot
+python3 evaluate_llm.py --fail-below 0.8   # Task 5: same, but exits non-zero on regression
 ```
+
+Screencast (not included in this repo) should show: both tuning jobs in **Vertex AI → Tuning** in the console (Task 3), and the v1-vs-v2 evaluation results with an explanation of why raw feature values outperformed the natural-language description on this task (Task 4).
